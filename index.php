@@ -17,11 +17,12 @@ ini_set("allow_url_fopen", false);
 
 error_reporting(E_ALL);
 ini_set('display_errors', 1);
+ini_set('log_errors', 1);
 
 define('BOT_TOKEN', '251951084:AAGSO5K_mbJo4Niw64xTd-ruEjMWpJOVdWE');
 define('API_URL', 'https://api.telegram.org/bot'.BOT_TOKEN);
 define('BR', '&#13;&#10;');
-define('GOOGLE_MOVIE_URL', 'http://www.google.ie/movies?');
+define('GOOGLE_MOVIE_URL', 'https://www.google.com/movies?');
 
 include('functions/main.php');
 
@@ -37,7 +38,6 @@ $update = json_decode($update, true);
 // echo '<pre>'; print_r( $update ); echo '</pre>'; //die();
 
 if( !$update ){
-  echo 'nothing to process';
   exit;
 }
 
@@ -56,19 +56,23 @@ if( isset($update['message']) ){
     $pos = strpos($msg, ' ');
 
     // get command
-    if( $pos !== false )
+    if( $pos !== false ){
       $cmd = substr( $msg, 0, $pos );
-    else
+      $query = substr( $msg, $pos+1);
+    }
+    else {
       $cmd = $msg;
+    }
 
     $cmd = str_replace('@MooweeBot', '', $cmd);
 
-    // get query
-    $query = substr( $msg, $pos);
-
-    file_get_contents(API_URL."/sendMessage?chat_id=155131589&text=cmd:".urlencode($cmd).'/'.urlencode(json_encode($update)));
+    // file_get_contents(API_URL."/sendMessage?chat_id=155131589&text=cmd:".urlencode($cmd).'/'.urlencode(json_encode($update)));
 
     switch( $cmd ){
+      case "/start":
+        $reply = "Moo thinks /help might help";
+        file_get_contents(API_URL."/sendMessage?chat_id=".$chat_id."&text=".urlencode($reply)."&parse_mode=HTML");
+        break;
       case "/help":
         $reply = "Moo need help?";
         file_get_contents(API_URL."/sendMessage?chat_id=".$chat_id."&text=".urlencode($reply)."&parse_mode=HTML");
@@ -87,6 +91,33 @@ if( isset($update['message']) ){
         break;
       case "/nearby":
         if( $type == 'private' ){
+          if( isset($query) ){
+            $results = get_cinemas( urlencode($query) );
+
+            if( isset($results) && count($results) )
+            {
+              $inline_keyboards = array();
+              foreach( $results as $r ){
+                array_push($inline_keyboards, array(
+                  array(
+                    'text' => $r['theatre_name'],
+                    'callback_data' => "near:".urlencode($query)."-tid:".$r['theatre_id']
+                  )
+                ));
+              }
+
+              $reply_markup = array(
+                'inline_keyboard' => $inline_keyboards
+              );
+
+              file_get_contents(API_URL."/sendMessage?chat_id=".$chat_id."&text=".urlencode("Select a cinema to display showtimes")."&parse_mode=HTML&reply_markup=".urlencode(json_encode($reply_markup)));
+            }
+            else
+            {
+              file_get_contents(API_URL."/sendMessage?chat_id=".$chat_id. "&text=".urlencode("Oh Moo! There are no cinemas near you"). "&parse_mode=HTML");
+            }
+          }
+          else {
             $reply_markup = array(
               'keyboard' => array(
                 array(
@@ -98,14 +129,15 @@ if( isset($update['message']) ){
               ),
               'one_time_keyboard' => true
             );
-            file_get_contents(API_URL."/sendMessage?chat_id=".$chat_id."&text=".urlencode('Searching for nearby cinemas')."&parse_mode=HTML&reply_markup=".json_encode($reply_markup));
+            file_get_contents(API_URL."/sendMessage?chat_id=".$chat_id. "&text=".urlencode('Moo wants to know where you are'). "&parse_mode=HTML&reply_markup=".urlencode(json_encode($reply_markup)));
+          }
         }
         else {
             $reply_markup = array(
               'force_reply' => true,
               'selective' => true
             );
-            file_get_contents(API_URL."/sendMessage?chat_id=".$chat_id."&text=".urlencode('Where are you at? Moo needs to know :3')."&reply_markup=".json_encode($reply_markup)."&reply_to_message_id=".$msg_id);
+            file_get_contents(API_URL."/sendMessage?chat_id=".$chat_id. "&text=".urlencode('Moo wants to know where you are'). "&reply_markup=".urlencode(json_encode($reply_markup))."&reply_to_message_id=".$msg_id);
 
             //file_get_contents(API_URL."/sendMessage?chat_id=".$chat_id."&text=".urlencode('Oh Moo! /nearby command does not work in group chats'));
         }
@@ -119,24 +151,32 @@ if( isset($update['message']) ){
     $chat_id = $update['message']['chat']['id'];
     $location = $update['message']['location']['latitude'].','.$update['message']['location']['longitude'];
 
+    // Hide request_location
+    file_get_contents(API_URL."/sendMessage?chat_id=".$chat_id. "&text=".urlencode("Finding cinemas near your location"). "&parse_mode=HTML&reply_markup=".urlencode(json_encode(array('hide_keyboard' => true))));
+
     $results = get_cinemas($location);
 
-    $inline_keyboards = array();
-    foreach( $results as $r ){
-      array_push($inline_keyboards, array(
-        array(
-          'text' => $r['theatre_name'],
-          'callback_data' => 'cinema:'.$r['theatre_id']
-        )
-      ));
+    if( isset($results) && count($results) ){
+      $inline_keyboards = array();
+      foreach( $results as $r ){
+        array_push($inline_keyboards, array(
+          array(
+            'text' => $r['theatre_name'],
+            'callback_data' => "coords:".$location."-tid:".$r['theatre_id']
+          )
+        ));
+      }
+
+      $reply_markup = array(
+        'inline_keyboard' => $inline_keyboards
+      );
+
+      file_get_contents(API_URL."/sendMessage?chat_id=".$chat_id. "&text=".urlencode("Select a cinema to display showtimes"). "&parse_mode=HTML&reply_markup=".urlencode(json_encode($reply_markup)));
     }
-
-    $reply_markup = array(
-      'inline_keyboard' => $inline_keyboards
-    );
-
-    file_get_contents(API_URL."/sendMessage?chat_id=".$chat_id."&text=".urlencode("Select a cinema")."&parse_mode=HTML&reply_markup=".json_encode($reply_markup));
-    break;
+    else
+    {
+      file_get_contents(API_URL."/sendMessage?chat_id=".$chat_id. "&text=".urlencode("Oh Moo! There are no cinemas near you"). "&parse_mode=HTML");
+    }
   }
 }
 else if( isset($update['inline_query']) ) {
@@ -214,26 +254,48 @@ else if( isset($update['inline_query']) ) {
   file_get_contents(API_URL."/answerInlineQuery?inline_query_id=".$query_id."&results=".urlencode(json_encode($inlineQueryResults)));*/
 }
 else if( isset($update['callback_query']) ){
+  // file_get_contents(API_URL."/sendMessage?chat_id=155131589&text=".urlencode(json_encode($update)));
+
+  $callback_id = $update['callback_query']['id'];
   $chat_id = $update['callback_query']['message']['chat']['id'];
   $query = $update['callback_query']['data'];
   $url = array();
 
-  // structure type:value (e.g. cinema:4fe465a8fad6dd65)
-  $filters = explode(' ', $query);
+  $filters = explode('-', $query);
   foreach( $filters as $f ){
-    $info = explode(':', $f);
+    $data = explode(':', $f);
 
-    switch( $info[0] ) // represents filter - cinema, movie, location
-    {
-      case 'cinema': array_push($url, 'tid='.$info[1]); break;
-      // case 'movie': break;
-      // case 'location': break;
+    if( $data[0] == 'near' )
+      array_push($url, $data[0].'='.urlencode($data[1]) );
+    else if( $data[0] == 'coords' )
+      array_push($url, 'near='.$data[1] );
+    else
+      array_push($url, $data[0].'='.$data[1] );
+  }
+  $url = implode('&', $url);
+
+  $results = get_movies( $url );
+
+  $output = "<b>Showing results for ".$results[0]['theatre_name'].'</b>&#13;&#10;'.$results[0]['theatre_info'];
+  $output .= "&#13;&#10;&#13;&#10;";
+
+  if( isset($results[0]['movies']) ){
+    foreach( $results[0]['movies'] as $m ){
+      $output .= '<b>'.$m['name'].'</b>&#13;&#10;';
+      $output .= $m['info'].'&#13;&#10;';
+      foreach( $m['time'] as $t ){
+        $output .= $t.' ';
+      }
+      $output .= '&#13;&#10;&#13;&#10;';
     }
   }
+  else {
+    $output .= "No results found";
+  }
 
-  $url = urlencode(implode('&', $url));
+  file_get_contents(API_URL."/answerCallbackQuery?callback_query_id=".$callback_id);
 
-  file_get_contents(API_URL."/sendMessage?chat_id=155131589&text=url:".$url);
+  file_get_contents(API_URL."/sendMessage?chat_id=".$chat_id."&text=".urlencode($output).'&parse_mode=HTML');
 }
 else {
   file_get_contents(API_URL."/sendMessage?chat_id=155131589&text=".urlencode(json_encode($update)));

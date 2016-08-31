@@ -10,13 +10,16 @@
  **/
 function get_cinemas( $location )
 {
+  log_error('get_cinema');
   $query = "near=".$location;
 
   $html = get_html($query);
+  log_error('retrieved html');
 
   $results = array();
 
   foreach($html->find('#movie_results .theater') as $div) {
+    log_error('found a theatre');
     $result = array();
 
     $theatre_id = $div->find('h2 a',0)->getAttribute('href');
